@@ -322,7 +322,7 @@ def upload_to_youtube(video_file, title, description, is_doc=False):
 def send_to_telegram(video_file, title, yt_link):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
-    clean_token = TELEGRAM_BOT_TOKEN.strip().replace("https://telegram.org", "").split("/")[0]
+    clean_token = TELEGRAM_BOT_TOKEN.strip()
     clean_chat_id = TELEGRAM_CHAT_ID.strip()
     caption = f"🎬 New Video Ready!\n\nTitle: {title}\nYouTube: {yt_link or 'Ready for Reels'}"
     url = f"https://telegram.org{clean_token}/sendVideo"
