@@ -217,6 +217,13 @@ def build_lipsync_video(script_text, final_output="final_short.mp4"):
         "-t", str(duration + 0.5), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", looped_vid
     ], check=True)
 
+    # Fast & clean merge with human female voiceover
+    subprocess.run([
+        "ffmpeg", "-y", "-i", looped_vid, "-i", "voice.mp3",
+        "-c:v", "libx264", "-c:a", "aac", "-shortest", final_output
+    ], check=True)
+    return final_output
+
     def try_space(space):
         client = Client(space, token=HF_TOKEN if HF_TOKEN else None)
         if "MuseTalk" in space:
@@ -315,10 +322,13 @@ def upload_to_youtube(video_file, title, description, is_doc=False):
 def send_to_telegram(video_file, title, yt_link):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
-    caption = f"🎬 *New Video Ready!*\n\n*Title:* {title}\n*YouTube:* {yt_link or 'Uploaded'}"
-    url = f"https://telegram.org{TELEGRAM_BOT_TOKEN}/sendVideo"
+    clean_token = TELEGRAM_BOT_TOKEN.strip().replace("https://telegram.org", "").split("/")
+    clean_chat_id = TELEGRAM_CHAT_ID.strip()
+    caption = f"🎬 New Video Ready!\n\nTitle: {title}\nYouTube: {yt_link or 'Ready for Reels'}"
+    url = f"https://telegram.org{clean_token}/sendVideo"
     with open(video_file, "rb") as vf:
-        requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption, "parse_mode": "Markdown"}, files={"video": vf})
+        res = requests.post(url, data={"chat_id": clean_chat_id, "caption": caption}, files={"video": vf})
+        print("Telegram response:", res.status_code, res.text)
 
 if __name__ == "__main__":
     custom_topic = None
