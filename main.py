@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import time
 import asyncio
 import urllib.parse
 import subprocess
@@ -19,7 +20,7 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 YOUTUBE_TOKEN_JSON = os.environ.get("YOUTUBE_TOKEN_JSON")
 
-MODE = sys.argv[1] if len(sys.argv) > 1 else "motivation"
+MODE = sys.argv if len(sys.argv) > 1 else "motivation"
 BASE_VIDEO_MOTIVATION = "motivation.mp4"
 HISTORY_FILE = "history.txt"
 STATE_FILE = "tg_state.txt"
@@ -130,22 +131,34 @@ def generate_content_data(custom_topic=None):
         }}
         """
 
-    response = None
-    for model_name in ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-2.0-flash"]:
-        for attempt in range(3):
-            try:
-                response = client.models.generate_content(model=model_name, contents=prompt)
-                break
-            except Exception as e:
-                print(f"Model {model_name} attempt {attempt+1} busy: {e}")
-                import time
-                time.sleep(5)
-        if response:
-            break
-    if not response:
-        raise RuntimeError("All Gemini models are currently busy, will retry on next schedule.")
+    raw_text = None
+    available_models = ["gemini-3.8-flash", "gemini-2.5-pro", "gemini-2.0-flash-lite"]
+    try:
+        for m in client.models.list():
+            m_name = m.name.split("/")[-1]
+            if "flash" in m_name and m_name not in available_models:
+                available_models.append(m_name)
+    except Exception:
+        pass
 
-    raw_text = response.text.strip()
+    for model_name in available_models[:5]:
+        for attempt in range(2):
+            try:
+                res = client.models.generate_content(model=model_name, contents=prompt)
+                if res and res.text:
+                    raw_text = res.text.strip()
+                    break
+            except Exception as e:
+                print(f"Model {model_name} busy: {e}")
+                time.sleep(4)
+        if raw_text:
+            break
+
+    if not raw_text:
+        print("Gemini busy, using Pollinations AI fallback...")
+        fb = requests.post("https://pollinations.ai", json={"messages": [{"role": "user", "content": prompt}], "jsonMode": True}, timeout=45)
+        raw_text = fb.text.strip()
+
     if raw_text.startswith("```json"):
         raw_text = raw_text[7:-3].strip()
     elif raw_text.startswith("```"):
@@ -182,7 +195,7 @@ def build_lipsync_video(script_text, final_output="final_short.mp4"):
             else:
                 result = client.predict(handle_file(looped_vid), handle_file("voice.mp3"), api_name="/predict")
 
-            synced_file = result[0] if isinstance(result, (list, tuple)) else result
+            synced_file = result if isinstance(result, (list, tuple)) else result
             if isinstance(synced_file, dict) and "video" in synced_file:
                 synced_file = synced_file["video"]
 
@@ -240,7 +253,11 @@ def upload_to_youtube(video_file, title, description, is_doc=False):
     if not YOUTUBE_TOKEN_JSON:
         return None
     try:
-        creds = Credentials.from_authorized_user_info(json.loads(YOUTUBE_TOKEN_JSON))
+        token_data = json.loads(YOUTUBE_TOKEN_JSON)
+        if "client_id" not in token_data or "client_secret" not in token_data:
+            print("Skipping YouTube upload: client_id/client_secret missing in token.")
+            return None
+        creds = Credentials.from_authorized_user_info(token_data)
         youtube = build("youtube", "v3", credentials=creds)
         body = {
             "snippet": {
@@ -255,7 +272,7 @@ def upload_to_youtube(video_file, title, description, is_doc=False):
         response = youtube.videos().insert(part="snippet,status", body=body, media_body=media).execute()
         return f"https://youtube.com{response.get('id')}"
     except Exception as e:
-        print("YouTube upload skipped/error:", e)
+        print("YouTube upload skipped due to error:", e)
         return None
 
 def send_to_telegram(video_file, title, yt_link):
