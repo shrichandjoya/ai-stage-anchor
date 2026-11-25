@@ -46,7 +46,8 @@ def check_telegram_topic():
             if val.isdigit():
                 last_id = int(val)
 
-    url = f"https://telegram.org{TELEGRAM_BOT_TOKEN}/getUpdates?offset={last_id + 1}"
+    url = "https://api." + "telegram.org" + f"/bot{TELEGRAM_BOT_TOKEN}/getUpdates?offset={last_id + 1}"
+
     try:
         res = requests.get(url, timeout=15).json()
         for item in res.get("result", []):
@@ -325,7 +326,7 @@ def send_to_telegram(video_file, title, yt_link):
     clean_token = TELEGRAM_BOT_TOKEN.strip()
     clean_chat_id = TELEGRAM_CHAT_ID.strip()
     caption = f"🎬 New Video Ready!\n\nTitle: {title}\nYouTube: {yt_link or 'Ready for Reels'}"
-    url = f"https://telegram.org{clean_token}/sendVideo"
+    url = "https://api." + "telegram.org" + "/bot" + clean_token + "/sendVideo"
     with open(video_file, "rb") as vf:
         res = requests.post(url, data={"chat_id": clean_chat_id, "caption": caption}, files={"video": vf})
         print("Telegram response:", res.status_code, res.text)
@@ -338,7 +339,6 @@ if __name__ == "__main__":
             print("No new Telegram topic found. Staying alive!")
             sys.exit(0)
         requests.post(f"https://telegram.org{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": TELEGRAM_CHAT_ID, "text": f"⏳ Topic mil gaya: '{custom_topic}'\nVideo ban rahi hai..."})
-
     is_documentary = (MODE != "motivation") or (custom_topic is not None)
     data = generate_content_data(custom_topic)
     final_vid = build_documentary_video(data["scenes"]) if is_documentary else build_lipsync_video(data["script"])
