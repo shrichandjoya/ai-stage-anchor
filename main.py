@@ -5,6 +5,7 @@ import time
 import asyncio
 import urllib.parse
 import subprocess
+import concurrent.futures
 import feedparser
 import requests
 import edge_tts
@@ -20,7 +21,7 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 YOUTUBE_TOKEN_JSON = os.environ.get("YOUTUBE_TOKEN_JSON")
 
-MODE = sys.argv if len(sys.argv) > 1 else "motivation"
+MODE = sys.argv[1] if len(sys.argv) > 1 else "motivation"
 BASE_VIDEO_MOTIVATION = "motivation.mp4"
 HISTORY_FILE = "history.txt"
 STATE_FILE = "tg_state.txt"
@@ -131,7 +132,7 @@ def generate_content_data(custom_topic=None):
         }}
         """
 
-        raw_text = None
+    raw_text = None
     available_models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"]
 
     for model_name in available_models:
@@ -169,7 +170,6 @@ def generate_content_data(custom_topic=None):
             except Exception as e:
                 print("JSON parse error:", e)
 
-    # 100% Safe Emergency Backup (Kabhi crash nahi hoga)
     if MODE == "motivation" and not custom_topic:
         return {
             "topic_summary": "Silent Grind & Self Respect",
@@ -191,7 +191,13 @@ def generate_content_data(custom_topic=None):
     }
 
 async def create_voiceover(script_text, output_audio):
-    communicate = edge_tts.Communicate(script_text, "hi-IN-SwaraNeural", rate="+2%")
+    clean_text = script_text.replace("...", " — ").replace("।", "। ")
+    communicate = edge_tts.Communicate(
+        clean_text,
+        voice="hi-IN-SwaraNeural",
+        rate="-3%",
+        pitch="+3Hz"
+    )
     await communicate.save(output_audio)
 
 def get_duration(media_path):
@@ -211,14 +217,18 @@ def build_lipsync_video(script_text, final_output="final_short.mp4"):
         "-t", str(duration + 0.5), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", looped_vid
     ], check=True)
 
-    spaces = ["TMElyralab/MuseTalk", "fffiloni/SadTalker", "camenduru/Wav2Lip"]
-    for space in spaces:
+    def try_space(space):
+        client = Client(space, token=HF_TOKEN if HF_TOKEN else None)
+        if "MuseTalk" in space:
+            return client.predict(audio_path=handle_file("voice.mp3"), video_path=handle_file(looped_vid), bbox_shift=0, api_name="/inference")
+        return client.predict(handle_file(looped_vid), handle_file("voice.mp3"), api_name="/predict")
+
+    for space in ["TMElyralab/MuseTalk", "fffiloni/SadTalker"]:
         try:
-            client = Client(space, token=HF_TOKEN if HF_TOKEN else None)
-            if "MuseTalk" in space:
-                result = client.predict(audio_path=handle_file("voice.mp3"), video_path=handle_file(looped_vid), bbox_shift=0, api_name="/inference")
-            else:
-                result = client.predict(handle_file(looped_vid), handle_file("voice.mp3"), api_name="/predict")
+            print(f"Trying {space} (Max 90s wait)...")
+            with concurrent.futures.ThreadPoolExecutor() as ex:
+                future = ex.submit(try_space, space)
+                result = future.result(timeout=90)
 
             synced_file = result if isinstance(result, (list, tuple)) else result
             if isinstance(synced_file, dict) and "video" in synced_file:
@@ -228,10 +238,12 @@ def build_lipsync_video(script_text, final_output="final_short.mp4"):
                 "ffmpeg", "-y", "-i", synced_file, "-i", "voice.mp3",
                 "-c:v", "libx264", "-c:a", "aac", "-map", "0:v:0", "-map", "1:a:0", "-shortest", final_output
             ], check=True)
+            print("Lip-sync completed!")
             return final_output
         except Exception as e:
-            print(f"Server {space} failed: {e}")
+            print(f"{space} skipped (busy/timeout): {e}")
 
+    print("Using fast clean base video + voiceover...")
     subprocess.run(["ffmpeg", "-y", "-i", looped_vid, "-i", "voice.mp3", "-c:v", "libx264", "-c:a", "aac", "-shortest", final_output], check=True)
     return final_output
 
