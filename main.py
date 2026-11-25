@@ -131,39 +131,64 @@ def generate_content_data(custom_topic=None):
         }}
         """
 
-    raw_text = None
-    available_models = ["gemini-3.8-flash", "gemini-2.5-pro", "gemini-2.0-flash-lite"]
-    try:
-        for m in client.models.list():
-            m_name = m.name.split("/")[-1]
-            if "flash" in m_name and m_name not in available_models:
-                available_models.append(m_name)
-    except Exception:
-        pass
+        raw_text = None
+    available_models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"]
 
-    for model_name in available_models[:5]:
-        for attempt in range(2):
+    for model_name in available_models:
+        for attempt in range(3):
             try:
                 res = client.models.generate_content(model=model_name, contents=prompt)
                 if res and res.text:
                     raw_text = res.text.strip()
                     break
             except Exception as e:
-                print(f"Model {model_name} busy: {e}")
-                time.sleep(4)
+                print(f"Model {model_name} attempt {attempt+1} busy: {e}")
+                time.sleep(5)
         if raw_text:
             break
 
     if not raw_text:
         print("Gemini busy, using Pollinations AI fallback...")
-        fb = requests.post("https://pollinations.ai", json={"messages": [{"role": "user", "content": prompt}], "jsonMode": True}, timeout=45)
-        raw_text = fb.text.strip()
+        try:
+            fb = requests.post(
+                "https://pollinations.ai",
+                json={"messages": [{"role": "user", "content": prompt}]},
+                timeout=45
+            )
+            if fb.status_code == 200 and fb.text.strip():
+                raw_text = fb.text.strip()
+        except Exception as e:
+            print("Pollinations fallback error:", e)
 
-    if raw_text.startswith("```json"):
-        raw_text = raw_text[7:-3].strip()
-    elif raw_text.startswith("```"):
-        raw_text = raw_text[3:-3].strip()
-    return json.loads(raw_text)
+    if raw_text:
+        start_idx = raw_text.find("{")
+        end_idx = raw_text.rfind("}")
+        if start_idx != -1 and end_idx != -1:
+            try:
+                return json.loads(raw_text[start_idx:end_idx + 1])
+            except Exception as e:
+                print("JSON parse error:", e)
+
+    # 100% Safe Emergency Backup (Kabhi crash nahi hoga)
+    if MODE == "motivation" and not custom_topic:
+        return {
+            "topic_summary": "Silent Grind & Self Respect",
+            "title": "खामोशी से मेहनत करो, शोर तुम्हारी कामयाबी मचाएगी 🔥 #shorts",
+            "description": "Khamoshi se apni mehnat jaari rakho! #motivation #hindi #shorts #success #mindset",
+            "script": "जब तुम अकेले मेहनत करते हो तो दुनिया हंसती है। लेकिन याद रखना, सबसे बड़ा बदला किसी से लड़ना नहीं बल्कि खुद को इतना कामयाब बनाना है कि लोग तुम्हारा वक्त मांगें। आज जो दर्द सह रहे हो, कल वही तुम्हारी सबसे बड़ी ताकत बनेगा। क्या तुम आज अपने सपनों के लिए लड़ने को तैयार हो?"
+        }
+    return {
+        "topic_summary": "India Global Rise",
+        "title": "दुनिया भर में क्यों बढ़ रही है भारत की ताकत? जानिए पूरा सच 🇮🇳 #shorts",
+        "description": "Bharat ki badhti taqat ki poori kahani! #india #news #documentary #shorts #trending",
+        "scenes": [
+            {"narration": "आज पूरी दुनिया की नजरें भारत की तेजी से बढ़ती ताकत पर टिकी हैं।", "image_prompt": "Futuristic India skyline at sunrise dramatic documentary style"},
+            {"narration": "पिछले कुछ सालों में तकनीक, स्पेस और अर्थव्यवस्था में भारत ने ऐतिहासिक छलांग लगाई है।", "image_prompt": "Indian space rocket launch dramatic cinematic lighting"},
+            {"narration": "चाहे डिजिटल क्रांति हो या ग्लोबल डिप्लोमेसी, हर मंच पर भारत की आवाज मजबूत हुई है।", "image_prompt": "World leaders summit diplomatic meeting dramatic documentary"},
+            {"narration": "आने वाले दशक में भारत दुनिया की तीसरी सबसे बड़ी अर्थव्यवस्था बनने की राह पर है।", "image_prompt": "Modern Indian metro city and financial hub night view"},
+            {"narration": "आपके हिसाब से भारत की सबसे बड़ी ताकत क्या है? कमेंट में जरूर बताएं।", "image_prompt": "Indian national flag waving proudly in golden sunlight"}
+        ]
+    }
 
 async def create_voiceover(script_text, output_audio):
     communicate = edge_tts.Communicate(script_text, "hi-IN-SwaraNeural", rate="+2%")
