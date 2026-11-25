@@ -176,7 +176,7 @@ def build_lipsync_video(script_text, final_output="final_short.mp4"):
     spaces = ["TMElyralab/MuseTalk", "fffiloni/SadTalker", "camenduru/Wav2Lip"]
     for space in spaces:
         try:
-            client = Client(space, hf_token=HF_TOKEN if HF_TOKEN else None)
+            client = Client(space, token=HF_TOKEN if HF_TOKEN else None)
             if "MuseTalk" in space:
                 result = client.predict(audio_path=handle_file("voice.mp3"), video_path=handle_file(looped_vid), bbox_shift=0, api_name="/inference")
             else:
@@ -239,20 +239,24 @@ def build_documentary_video(scenes, final_output="final_short.mp4"):
 def upload_to_youtube(video_file, title, description, is_doc=False):
     if not YOUTUBE_TOKEN_JSON:
         return None
-    creds = Credentials.from_authorized_user_info(json.loads(YOUTUBE_TOKEN_JSON))
-    youtube = build("youtube", "v3", credentials=creds)
-    body = {
-        "snippet": {
-            "title": title[:99],
-            "description": description,
-            "tags": ["shorts", "hindi", "news", "documentary", "motivation", "india"],
-            "categoryId": "25" if is_doc else "22"
-        },
-        "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}
-    }
-    media = MediaFileUpload(video_file, chunksize=-1, resumable=True, mimetype="video/mp4")
-    response = youtube.videos().insert(part="snippet,status", body=body, media_body=media).execute()
-    return f"https://youtube.com{response.get('id')}"
+    try:
+        creds = Credentials.from_authorized_user_info(json.loads(YOUTUBE_TOKEN_JSON))
+        youtube = build("youtube", "v3", credentials=creds)
+        body = {
+            "snippet": {
+                "title": title[:99],
+                "description": description,
+                "tags": ["shorts", "hindi", "news", "documentary", "motivation", "india"],
+                "categoryId": "25" if is_doc else "22"
+            },
+            "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}
+        }
+        media = MediaFileUpload(video_file, chunksize=-1, resumable=True, mimetype="video/mp4")
+        response = youtube.videos().insert(part="snippet,status", body=body, media_body=media).execute()
+        return f"https://youtube.com{response.get('id')}"
+    except Exception as e:
+        print("YouTube upload skipped/error:", e)
+        return None
 
 def send_to_telegram(video_file, title, yt_link):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
