@@ -69,8 +69,9 @@ def check_telegram_topic():
 
 def fetch_trending_news():
     rss_urls = [
-        "https://google.com",
-        "https://google.com"
+    "https://" + "://google.com",
+    "https://" + "://google.com"
+]
     ]
     headlines = []
     for url in rss_urls:
@@ -153,7 +154,7 @@ def generate_content_data(custom_topic=None):
         print("Gemini busy, using Pollinations AI fallback...")
         try:
             fb = requests.post(
-                "https://pollinations.ai",
+                "https://text." + "pollinations.ai/",
                 json={"messages": [{"role": "user", "content": prompt}]},
                 timeout=45
             )
@@ -257,7 +258,7 @@ def build_lipsync_video(script_text, final_output="final_short.mp4"):
 
 def download_scene_image(prompt, img_path):
     encoded = urllib.parse.quote(f"{prompt}, photorealistic documentary style, dramatic lighting, 8k, no text")
-    url = f"https://pollinations.ai{encoded}?width=720&height=1280&nologo=true"
+    url = "https://image." + "pollinations.ai/prompt/" + f"{encoded}?width=720&height=1280&nologo=true"
     for _ in range(3):
         try:
             res = requests.get(url, timeout=45)
@@ -338,7 +339,7 @@ if __name__ == "__main__":
         if not custom_topic:
             print("No new Telegram topic found. Staying alive!")
             sys.exit(0)
-        requests.post(f"https://telegram.org{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": TELEGRAM_CHAT_ID, "text": f"⏳ Topic mil gaya: '{custom_topic}'\nVideo ban rahi hai..."})
+        requests.post("https://api." + "telegram.org/bot" + f"{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": TELEGRAM_CHAT_ID, "text": f"⏳ Topic mil gaya: '{custom_topic}'\nVideo ban rahi hai..."})
     is_documentary = (MODE != "motivation") or (custom_topic is not None)
     data = generate_content_data(custom_topic)
     final_vid = build_documentary_video(data["scenes"]) if is_documentary else build_lipsync_video(data["script"])
