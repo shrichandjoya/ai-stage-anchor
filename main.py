@@ -130,7 +130,21 @@ def generate_content_data(custom_topic=None):
         }}
         """
 
-    response = client.models.generate_content(model="gemini-3.8-flash", contents=prompt)
+       response = None
+    for model_name in ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-2.0-flash"]:
+        for attempt in range(3):
+            try:
+                response = client.models.generate_content(model=model_name, contents=prompt)
+                break
+            except Exception as e:
+                print(f"Model {model_name} attempt {attempt+1} busy: {e}")
+                import time
+                time.sleep(5)
+        if response:
+            break
+    if not response:
+        raise RuntimeError("All Gemini models are currently busy, will retry on next schedule.")
+
     raw_text = response.text.strip()
     if raw_text.startswith("```json"):
         raw_text = raw_text[7:-3].strip()
