@@ -20,7 +20,7 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 YOUTUBE_TOKEN_JSON = os.environ.get("YOUTUBE_TOKEN_JSON")
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "motivation"
-BASE_VIDEO_MOTIVATION = "motivation_video.mp4"
+BASE_VIDEO_MOTIVATION = "motivation.mp4"
 HISTORY_FILE = "history.txt"
 STATE_FILE = "tg_state.txt"
 
