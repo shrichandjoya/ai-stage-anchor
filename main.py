@@ -71,7 +71,6 @@ def fetch_trending_news():
     rss_urls = [
     "https://" + "://google.com",
     "https://" + "://google.com"
-]
     ]
     headlines = []
     for url in rss_urls:
