@@ -130,7 +130,7 @@ def generate_content_data(custom_topic=None):
         }}
         """
 
-    response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+   response = client.models.generate_content(model="gemini-3.8-flash", contents=prompt)
     raw_text = response.text.strip()
     if raw_text.startswith("```json"):
         raw_text = raw_text[7:-3].strip()
