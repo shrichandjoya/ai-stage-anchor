@@ -2,12 +2,11 @@ import os
 import sys
 import json
 import time
-import asyncio
 import urllib.parse
 import subprocess
 import feedparser
 import requests
-import edge_tts
+import soundfile as sf
 from google import genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -18,8 +17,7 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 YOUTUBE_TOKEN_JSON = os.environ.get("YOUTUBE_TOKEN_JSON")
 
-MODE = sys.argv[1] if len(sys.argv) > 1 else "motivation"
-BASE_VIDEO_MOTIVATION = "motivation.mp4"
+MODE = sys.argv if len(sys.argv) > 1 else "motivation"
 HISTORY_FILE = "history.txt"
 STATE_FILE = "tg_state.txt"
 
@@ -65,8 +63,8 @@ def check_telegram_topic():
 
 def fetch_trending_news():
     rss_urls = [
-    "https://news.google." + "com/rss?hl=hi&gl=IN&ceid=IN:hi",
-    "https://news.google." + "com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FtVnVHZ0pWVXlnQVAB?hl=en-IN&gl=IN:en"
+        "https://news.google." + "com/rss?hl=hi&gl=IN&ceid=IN:hi",
+        "https://news.google." + "com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FtVnVHZ0pWVXlnQVAB?hl=en-IN&gl=IN:en"
     ]
     headlines = []
     for url in rss_urls:
@@ -82,209 +80,143 @@ def generate_content_data(custom_topic=None):
     past_topics = get_history()
 
     if MODE == "motivation" and not custom_topic:
-        prompt = f"""
-        Ek viral 35-40 second ka Hindi/Hinglish motivational dialogue ya dil ko chhu lene wali shayari likho (YouTube Shorts aur Instagram Reels ke liye).
-        Rules:
-        1. Pehle 3 second mein ek strong hook ho.
-        2. Ghise-pite quotes mat likho. Real-life struggle, silent mehnat, ya self-respect par deep baat likho.
-        3. Aakhiri line ek punch ya sawal ho jisse log comment karein.
-        4. Koi bracket ya emoji script ke andar mat likho, sirf bolne wale shabd likho (75-90 shabd).
-        5. In purane topics ko repeat mat karna: {past_topics}
-
-        Sirf valid JSON format mein jawab do:
-        {{
-            "topic_summary": "Chhota topic naam",
-            "title": "Viral Hindi/Hinglish YouTube Shorts Title with #shorts",
-            "description": "Short description aur 5 trending hashtags",
-            "script": "Bolne wali poori script"
-        }}
-        """
+        topic_instruction = "Ek viral 35 second ka Hindi motivational dialogue ya dil ko chhu lene wali shayari likho. Har scene ke liye visual prompt mein ek confident Indian young woman stage par mic ke saamne bolti hui (vertical 9:16) dikhao."
+    elif custom_topic:
+        topic_instruction = f"Is khaas topic par poori backstory ke saath 35-40 second ki documentary script likho: '{custom_topic}'"
     else:
-        topic_instruction = f"Is khaas topic par video banao: '{custom_topic}'" if custom_topic else f"Niche di gayi trending news mein se sabse garam current topic chuno:\n{fetch_trending_news()}"
-        prompt = f"""
-        Tum ek top Hindi Documentary aur Current Affairs Shorts creator ho.
-        {topic_instruction}
+        topic_instruction = f"Niche di gayi trending news mein se sabse garam current topic (rajniti, desh-duniya, sports) chuno aur poori backstory ke saath 35-40 second ki script likho:\n{fetch_trending_news()}"
 
-        Is topic ki poori backstory ke saath (kab shuru hua, kya bhumika rahi, aur ab aage kya) ek 35-45 second ki documentary script likho.
-        Script ko 5 chhote scenes mein baanto. Har scene ke liye ek detailed English visual prompt do jisse us scene ki realistic documentary picture ban sake (vertical 9:16 style).
+    prompt = f"""
+    Tum ek top Hindi YouTube Shorts creator ho.
+    {topic_instruction}
 
-        Rules:
-        1. Script balanced aur factual ho, bolne mein natural lage (total 80-95 shabd).
-        2. Script mein koi bracket ya emoji mat daalna.
-        3. Aakhiri scene mein audience se ek opinion sawal puchho.
-        4. Purane topics repeat mat karna: {past_topics}
+    Script ko 5 chhote scenes mein baanto (total 75-85 Hindi shabd). Har scene ke liye ek detailed English video prompt do (vertical 9:16 realistic style).
+    Rules:
+    1. Script bolne mein bilkul natural aur emotional lage, koi bracket ya emoji mat daalna.
+    2. Aakhiri scene mein audience se ek sawal puchho.
+    3. Purane topics repeat mat karna: {past_topics}
 
-        Sirf valid JSON format mein jawab do:
-        {{
-            "topic_summary": "Chhota topic naam",
-            "title": "Viral Hindi Documentary Shorts Title with #shorts",
-            "description": "Short description aur 5 trending hashtags",
-            "scenes": [
-                {{"narration": "Scene 1 ki Hindi line", "image_prompt": "Detailed realistic cinematic photo prompt in English for scene 1"}},
-                {{"narration": "Scene 2 ki Hindi line", "image_prompt": "Detailed realistic cinematic photo prompt in English for scene 2"}},
-                {{"narration": "Scene 3 ki Hindi line", "image_prompt": "Detailed realistic cinematic photo prompt in English for scene 3"}},
-                {{"narration": "Scene 4 ki Hindi line", "image_prompt": "Detailed realistic cinematic photo prompt in English for scene 4"}},
-                {{"narration": "Scene 5 ki Hindi line", "image_prompt": "Detailed realistic cinematic photo prompt in English for scene 5"}}
-            ]
-        }}
-        """
+    Sirf valid JSON format mein jawab do:
+    {{
+        "topic_summary": "Chhota topic naam",
+        "title": "Viral Hindi YouTube Shorts Title with #shorts",
+        "description": "Short description aur 5 trending hashtags",
+        "scenes": [
+            {{"narration": "Scene 1 Hindi line", "video_prompt": "English realistic video prompt for scene 1"}},
+            {{"narration": "Scene 2 Hindi line", "video_prompt": "English realistic video prompt for scene 2"}},
+            {{"narration": "Scene 3 Hindi line", "video_prompt": "English realistic video prompt for scene 3"}},
+            {{"narration": "Scene 4 Hindi line", "video_prompt": "English realistic video prompt for scene 4"}},
+            {{"narration": "Scene 5 Hindi line", "video_prompt": "English realistic video prompt for scene 5"}}
+        ]
+    }}
+    """
 
     raw_text = None
-    available_models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"]
-
-    for model_name in available_models:
-        for attempt in range(3):
+    for model_name in ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"]:
+        for _ in range(2):
             try:
                 res = client.models.generate_content(model=model_name, contents=prompt)
                 if res and res.text:
                     raw_text = res.text.strip()
                     break
             except Exception as e:
-                print(f"Model {model_name} attempt {attempt+1} busy: {e}")
-                time.sleep(5)
+                print(f"Model {model_name} busy: {e}")
+                time.sleep(3)
         if raw_text:
             break
 
     if not raw_text:
-        print("Gemini busy, using Pollinations AI fallback...")
         try:
-            fb = requests.post(
-                "https://text." + "pollinations.ai/",
-                json={"messages": [{"role": "user", "content": prompt}]},
-                timeout=45
-            )
-            if fb.status_code == 200 and fb.text.strip():
+            fb = requests.post("https://text." + "pollinations.ai/", json={"messages": [{"role": "user", "content": prompt}]}, timeout=45)
+            if fb.status_code == 200:
                 raw_text = fb.text.strip()
-        except Exception as e:
-            print("Pollinations fallback error:", e)
+        except Exception:
+            pass
 
     if raw_text:
-        start_idx = raw_text.find("{")
-        end_idx = raw_text.rfind("}")
-        if start_idx != -1 and end_idx != -1:
+        s_idx, e_idx = raw_text.find("{"), raw_text.rfind("}")
+        if s_idx != -1 and e_idx != -1:
             try:
-                return json.loads(raw_text[start_idx:end_idx + 1])
-            except Exception as e:
-                print("JSON parse error:", e)
+                return json.loads(raw_text[s_idx:e_idx + 1])
+            except Exception:
+                pass
 
-    if MODE == "motivation" and not custom_topic:
-        return {
-            "topic_summary": "Silent Grind & Self Respect",
-            "title": "खामोशी से मेहनत करो, शोर तुम्हारी कामयाबी मचाएगी 🔥 #shorts",
-            "description": "Khamoshi se apni mehnat jaari rakho! #motivation #hindi #shorts #success #mindset",
-            "script": "जब तुम अकेले मेहनत करते हो तो दुनिया हंसती है। लेकिन याद रखना, सबसे बड़ा बदला किसी से लड़ना नहीं बल्कि खुद को इतना कामयाब बनाना है कि लोग तुम्हारा वक्त मांगें। आज जो दर्द सह रहे हो, कल वही तुम्हारी सबसे बड़ी ताकत बनेगा। क्या तुम आज अपने सपनों के लिए लड़ने को तैयार हो?"
-        }
     return {
-        "topic_summary": "India Global Rise",
-        "title": "दुनिया भर में क्यों बढ़ रही है भारत की ताकत? जानिए पूरा सच 🇮🇳 #shorts",
-        "description": "Bharat ki badhti taqat ki poori kahani! #india #news #documentary #shorts #trending",
+        "topic_summary": "Silent Grind & Success",
+        "title": "खामोशी से मेहनत करो, शोर तुम्हारी कामयाबी मचाएगी 🔥 #shorts",
+        "description": "Apne sapno ke liye khamoshi se mehnat karo! #motivation #hindi #shorts #success",
         "scenes": [
-            {"narration": "आज पूरी दुनिया की नजरें भारत की तेजी से बढ़ती ताकत पर टिकी हैं।", "image_prompt": "Futuristic India skyline at sunrise dramatic documentary style"},
-            {"narration": "पिछले कुछ सालों में तकनीक, स्पेस और अर्थव्यवस्था में भारत ने ऐतिहासिक छलांग लगाई है।", "image_prompt": "Indian space rocket launch dramatic cinematic lighting"},
-            {"narration": "चाहे डिजिटल क्रांति हो या ग्लोबल डिप्लोमेसी, हर मंच पर भारत की आवाज मजबूत हुई है।", "image_prompt": "World leaders summit diplomatic meeting dramatic documentary"},
-            {"narration": "आने वाले दशक में भारत दुनिया की तीसरी सबसे बड़ी अर्थव्यवस्था बनने की राह पर है।", "image_prompt": "Modern Indian metro city and financial hub night view"},
-            {"narration": "आपके हिसाब से भारत की सबसे बड़ी ताकत क्या है? कमेंट में जरूर बताएं।", "image_prompt": "Indian national flag waving proudly in golden sunlight"}
+            {"narration": "जब तुम अकेले मेहनत करते हो तो दुनिया तुम पर हंसती है।", "video_prompt": "Confident Indian young woman speaking passionately on a modern stage with warm spotlight"},
+            {"narration": "हर रात की खामोश मेहनत एक दिन तुम्हारी पहचान बन जाती है।", "video_prompt": "Close up of young Indian woman on stage gesturing naturally while speaking"},
+            {"narration": "याद रखना सबसे बड़ा बदला किसी से लड़ना नहीं होता।", "video_prompt": "Indian female speaker on stage with blurred audience lights in background"},
+            {"narration": "बल्कि खुद को इतना कामयाब बनाना है कि लोग तुम्हारा वक्त मांगें।", "video_prompt": "Inspiring young Indian woman smiling confidently on stage"},
+            {"narration": "क्या तुम आज अपने सपनों के लिए लड़ने को तैयार हो?", "video_prompt": "Dramatic stage lighting on young Indian female motivational speaker"}
         ]
     }
 
-async def create_voiceover(script_text, output_audio):
-    clean_text = script_text.replace("...", " — ").replace("।", "। ")
-    communicate = edge_tts.Communicate(
-        clean_text,
-        voice="hi-IN-AnanyaNeural",
-        rate="-5%",
-        pitch="+2Hz"
-    )
-    await communicate.save(output_audio)
+def create_real_girl_voice(text, output_mp3):
+    try:
+        from kokoro_onnx import Kokoro
+        if not os.path.exists("kokoro-v1.0.onnx"):
+            subprocess.run(["wget", "-q", "https://github." + "com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx"], check=True)
+            subprocess.run(["wget", "-q", "https://github." + "com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin"], check=True)
+        kokoro = Kokoro("kokoro-v1.0.onnx", "voices-v1.0.bin")
+        samples, sample_rate = kokoro.create(text, voice="hf_alpha", speed=0.95, lang="hi")
+        sf.write("temp_kokoro.wav", samples, sample_rate)
+        subprocess.run(["ffmpeg", "-y", "-i", "temp_kokoro.wav", "-ar", "44100", output_mp3], check=True)
+        if os.path.exists(output_mp3) and os.path.getsize(output_mp3) > 1000:
+            print("Kokoro Real Indian Female Voice generated!")
+            return
+    except Exception as e:
+        print("Kokoro fallback to gTTS:", e)
+
+    from gtts import gTTS
+    tts = gTTS(text=text, lang="hi", tld="co.in", slow=False)
+    tts.save("temp_gtts.mp3")
+    subprocess.run(["ffmpeg", "-y", "-i", "temp_gtts.mp3", "-af", "asetrate=24000*1.03,aresample=24000,atempo=0.98", output_mp3], check=True)
 
 def get_duration(media_path):
     cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", media_path]
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    return float(result.stdout)
-def build_lipsync_video(script_text, final_output="final_short.mp4"):
-    asyncio.run(create_voiceover(script_text, "voice.mp3"))
-    duration = get_duration("voice.mp3")
-
-    if not os.path.exists(BASE_VIDEO_MOTIVATION):
-        raise FileNotFoundError(f"'{BASE_VIDEO_MOTIVATION}' repo mein nahi mili!")
-
-    looped_vid = "looped_base.mp4"
-    subprocess.run([
-        "ffmpeg", "-y", "-stream_loop", "-1", "-i", BASE_VIDEO_MOTIVATION,
-        "-t", str(duration + 0.3), "-vf", "scale=720:1280,fps=25",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", looped_vid
-    ], check=True)
-
+    return float(subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout)
+def fetch_ai_video_clip(prompt, out_mp4):
+    encoded = urllib.parse.quote(f"{prompt}, realistic 4k vertical video, cinematic lighting, smooth motion")
+    # Free AI Video endpoint with automatic AI Image + Zoom fallback
+    vid_url = "https://video." + "pollinations.ai/prompt/" + f"{encoded}?width=720&height=1280&nologo=true"
     try:
-        if not os.path.exists("Wav2Lip"):
-            subprocess.run(["git", "clone", "https://github." + "com/Rudrabha/Wav2Lip.git"], check=True)
-            os.makedirs("Wav2Lip/checkpoints", exist_ok=True)
-            os.makedirs("Wav2Lip/face_detection/detection/sfd", exist_ok=True)
-            subprocess.run([
-                "wget", "-q",
-                "https://" + "huggingface.co/camenduru/Wav2Lip/resolve/main/checkpoints/wav2lip_gan.pth",
-                "-O", "Wav2Lip/checkpoints/wav2lip_gan.pth"
-            ], check=True)
-            subprocess.run([
-                "wget", "-q",
-                "https://www.adrianbulat." + "com/downloads/python-fan/s3fd-619a316812.pth",
-                "-O", "Wav2Lip/face_detection/detection/sfd/s3fd.pth"
-            ], check=True)
-
-        subprocess.run(["ffmpeg", "-y", "-i", "voice.mp3", "-ar", "16000", "-ac", "1", "voice.wav"], check=True)
-        subprocess.run([
-            "python", "Wav2Lip/inference.py",
-            "--checkpoint_path", "Wav2Lip/checkpoints/wav2lip_gan.pth",
-            "--face", looped_vid,
-            "--audio", "voice.wav",
-            "--pads", "0", "15", "0", "0",
-            "--nosmooth",
-            "--outfile", final_output
-        ], check=True)
-
-        if os.path.exists(final_output):
-            print("Real Lip-Sync Video Generated!")
-            return final_output
+        res = requests.get(vid_url, timeout=60)
+        if res.status_code == 200 and len(res.content) > 20000:
+            with open(out_mp4, "wb") as f:
+                f.write(res.content)
+            return True
     except Exception as e:
-        print("Local Wav2Lip error:", e)
-
-    subprocess.run([
-        "ffmpeg", "-y", "-i", looped_vid, "-i", "voice.mp3",
-        "-c:v", "libx264", "-c:a", "aac", "-shortest", final_output
-    ], check=True)
-    return final_output
-
-def download_scene_image(prompt, img_path):
-    encoded = urllib.parse.quote(f"{prompt}, photorealistic documentary style, dramatic lighting, 8k, no text")
-    url = "https://image." + "pollinations.ai/prompt/" + f"{encoded}?width=720&height=1280&nologo=true"
-    for _ in range(3):
-        try:
-            res = requests.get(url, timeout=45)
-            if res.status_code == 200 and len(res.content) > 5000:
-                with open(img_path, "wb") as f:
-                    f.write(res.content)
-                return True
-        except Exception:
-            pass
+        print("AI Video clip fallback to cinematic motion:", e)
     return False
 
-def build_documentary_video(scenes, final_output="final_short.mp4"):
+def build_full_ai_video(scenes, final_output="final_short.mp4"):
     clip_files = []
     for idx, scene in enumerate(scenes):
-        audio_file, img_file, clip_file = f"scene_{idx}.mp3", f"scene_{idx}.jpg", f"clip_{idx}.mp4"
-        asyncio.run(create_voiceover(scene["narration"], audio_file))
-        dur = get_duration(audio_file)
+        audio_f, raw_vid_f, img_f, clip_f = f"s_{idx}.mp3", f"raw_{idx}.mp4", f"img_{idx}.jpg", f"clip_{idx}.mp4"
+        create_real_girl_voice(scene["narration"], audio_f)
+        dur = get_duration(audio_f)
 
-        if not download_scene_image(scene["image_prompt"], img_file):
-            subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=0x111827:s=720x1280:d=1", "-frames:v", "1", img_file], check=True)
-
-        frames = int((dur + 0.2) * 25)
-        zoom_filter = f"scale=1440:2560,zoompan=z='min(zoom+0.0015,1.15)':d={frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=720x1280,fps=25"
-        subprocess.run([
-            "ffmpeg", "-y", "-loop", "1", "-i", img_file, "-i", audio_file,
-            "-vf", zoom_filter, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", clip_file
-        ], check=True)
-        clip_files.append(clip_file)
+        if fetch_ai_video_clip(scene["video_prompt"], raw_vid_f):
+            subprocess.run([
+                "ffmpeg", "-y", "-stream_loop", "-1", "-i", raw_vid_f, "-i", audio_f,
+                "-t", str(dur), "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=25",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", clip_f
+            ], check=True)
+        else:
+            img_url = "https://image." + "pollinations.ai/prompt/" + urllib.parse.quote(f"{scene['video_prompt']}, photorealistic 8k vertical") + "?width=720&height=1280&nologo=true"
+            r = requests.get(img_url, timeout=45)
+            with open(img_f, "wb") as f:
+                f.write(r.content)
+            frames = int((dur + 0.2) * 25)
+            zoom_filter = f"scale=1440:2560,zoompan=z='min(zoom+0.0015,1.15)':d={frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=720x1280,fps=25"
+            subprocess.run([
+                "ffmpeg", "-y", "-loop", "1", "-i", img_f, "-i", audio_f,
+                "-vf", zoom_filter, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", clip_f
+            ], check=True)
+        clip_files.append(clip_f)
 
     with open("concat_list.txt", "w") as f:
         for cf in clip_files:
@@ -299,7 +231,6 @@ def upload_to_youtube(video_file, title, description, is_doc=False):
     try:
         token_data = json.loads(YOUTUBE_TOKEN_JSON)
         if "client_id" not in token_data or "client_secret" not in token_data:
-            print("Skipping YouTube upload: client_id/client_secret missing in token.")
             return None
         creds = Credentials.from_authorized_user_info(token_data)
         youtube = build("youtube", "v3", credentials=creds)
@@ -307,7 +238,7 @@ def upload_to_youtube(video_file, title, description, is_doc=False):
             "snippet": {
                 "title": title[:99],
                 "description": description,
-                "tags": ["shorts", "hindi", "news", "documentary", "motivation", "india"],
+                "tags": ["shorts", "hindi", "news", "motivation", "india"],
                 "categoryId": "25" if is_doc else "22"
             },
             "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}
@@ -316,7 +247,7 @@ def upload_to_youtube(video_file, title, description, is_doc=False):
         response = youtube.videos().insert(part="snippet,status", body=body, media_body=media).execute()
         return "https://www.youtube." + f"com/shorts/{response.get('id')}"
     except Exception as e:
-        print("YouTube upload skipped due to error:", e)
+        print("YouTube upload skipped:", e)
         return None
 
 def send_to_telegram(video_file, title, yt_link):
@@ -324,23 +255,23 @@ def send_to_telegram(video_file, title, yt_link):
         return
     clean_token = TELEGRAM_BOT_TOKEN.strip()
     clean_chat_id = TELEGRAM_CHAT_ID.strip()
-    caption = f"🎬 New Video Ready!\n\nTitle: {title}\nYouTube: {yt_link or 'Ready for Reels'}"
+    caption = f"🎬 New AI Video Ready!\n\nTitle: {title}\nYouTube: {yt_link or 'Ready for Reels'}"
     url = "https://api." + "telegram.org" + "/bot" + clean_token + "/sendVideo"
     with open(video_file, "rb") as vf:
-        res = requests.post(url, data={"chat_id": clean_chat_id, "caption": caption}, files={"video": vf})
-        print("Telegram response:", res.status_code, res.text)
+        requests.post(url, data={"chat_id": clean_chat_id, "caption": caption}, files={"video": vf})
 
 if __name__ == "__main__":
     custom_topic = None
     if MODE == "telegram_check":
         custom_topic = check_telegram_topic()
         if not custom_topic:
-            print("No new Telegram topic found. Staying alive!")
+            print("No new Telegram topic. Alive!")
             sys.exit(0)
         requests.post("https://api." + "telegram.org/bot" + f"{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": TELEGRAM_CHAT_ID, "text": f"⏳ Topic mil gaya: '{custom_topic}'\nVideo ban rahi hai..."})
-    is_documentary = (MODE != "motivation") or (custom_topic is not None)
+
+    is_doc = (MODE != "motivation") or (custom_topic is not None)
     data = generate_content_data(custom_topic)
-    final_vid = build_documentary_video(data["scenes"]) if is_documentary else build_lipsync_video(data["script"])
-    yt_url = upload_to_youtube(final_vid, data["title"], data["description"], is_documentary)
+    final_vid = build_full_ai_video(data["scenes"], "final_short.mp4")
+    yt_url = upload_to_youtube(final_vid, data["title"], data["description"], is_doc)
     send_to_telegram(final_vid, data["title"], yt_url)
     save_history(f"[{'TG' if custom_topic else MODE}] {data['topic_summary']}")
