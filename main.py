@@ -65,8 +65,8 @@ def check_telegram_topic():
 
 def fetch_trending_news():
     rss_urls = [
-        "https://news." + "://google.com",
-        "https://news." + "://google.com"
+    "https://news.google." + "com/rss?hl=hi&gl=IN&ceid=IN:hi",
+    "https://news.google." + "com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FtVnVHZ0pWVXlnQVAB?hl=en-IN&gl=IN:en"
     ]
     headlines = []
     for url in rss_urls:
@@ -217,7 +217,7 @@ def build_lipsync_video(script_text, final_output="final_short.mp4"):
 
     try:
         if not os.path.exists("Wav2Lip"):
-            subprocess.run(["git", "clone", "https://" + "://github.com"], check=True)
+            subprocess.run(["git", "clone", "https://github." + "com/Rudrabha/Wav2Lip.git"], check=True)
             os.makedirs("Wav2Lip/checkpoints", exist_ok=True)
             os.makedirs("Wav2Lip/face_detection/detection/sfd", exist_ok=True)
             subprocess.run([
@@ -227,7 +227,7 @@ def build_lipsync_video(script_text, final_output="final_short.mp4"):
             ], check=True)
             subprocess.run([
                 "wget", "-q",
-                "https://www." + "://adrianbulat.com",
+                "https://www.adrianbulat." + "com/downloads/python-fan/s3fd-619a316812.pth",
                 "-O", "Wav2Lip/face_detection/detection/sfd/s3fd.pth"
             ], check=True)
 
@@ -314,7 +314,7 @@ def upload_to_youtube(video_file, title, description, is_doc=False):
         }
         media = MediaFileUpload(video_file, chunksize=-1, resumable=True, mimetype="video/mp4")
         response = youtube.videos().insert(part="snippet,status", body=body, media_body=media).execute()
-        return "https://www." + f"://youtube.com{response.get('id')}"
+        return "https://www.youtube." + f"com/shorts/{response.get('id')}"
     except Exception as e:
         print("YouTube upload skipped due to error:", e)
         return None
