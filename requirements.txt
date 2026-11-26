@@ -1,10 +1,7 @@
-librosa==0.9.2
-opencv-python-headless
-torch
-torchvision
+kokoro-onnx
+soundfile
+gTTS
 google-genai
-edge-tts
-gradio_client
 feedparser
 requests
 google-api-python-client
