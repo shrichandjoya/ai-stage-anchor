@@ -192,30 +192,69 @@ def fetch_ai_video_clip(prompt, out_mp4):
         print("AI Video clip fallback to cinematic motion:", e)
     return False
 
+def fetch_free_real_photo(query, save_path):
+    try:
+        headers = {"User-Agent": "ShortsDocumentaryBot/1.0"}
+        params = {
+            "action": "query",
+            "generator": "search",
+            "gsrsearch": f"filetype:bitmap {query}",
+            "gsrnamespace": 6,
+            "gsrlimit": 5,
+            "prop": "imageinfo",
+            "iiprop": "url",
+            "iiurlwidth": 1080,
+            "format": "json"
+        }
+        api_url = "https://commons.wikimedia." + "org/w/api.php"
+        res = requests.get(api_url, params=params, headers=headers, timeout=20).json()
+        pages = res.get("query", {}).get("pages", {})
+        for _, p in pages.items():
+            img_url = p.get("imageinfo", [{}])[0].get("thumburl")
+            if img_url and img_url.lower().endswith((".jpg", ".jpeg", ".png")):
+                img_data = requests.get(img_url, headers=headers, timeout=25).content
+                if len(img_data) > 15000:
+                    with open(save_path, "wb") as f:
+                        f.write(img_data)
+                    return True
+    except Exception as e:
+        print("Wikimedia photo search error:", e)
+    return False
+
 def build_full_ai_video(scenes, final_output="final_short.mp4"):
     clip_files = []
     for idx, scene in enumerate(scenes):
-        audio_f, raw_vid_f, img_f, clip_f = f"s_{idx}.mp3", f"raw_{idx}.mp4", f"img_{idx}.jpg", f"clip_{idx}.mp4"
+        audio_f, img_f, clip_f = f"s_{idx}.mp3", f"img_{idx}.jpg", f"clip_{idx}.mp4"
         create_real_girl_voice(scene["narration"], audio_f)
         dur = get_duration(audio_f)
 
-        if fetch_ai_video_clip(scene["video_prompt"], raw_vid_f):
-            subprocess.run([
-                "ffmpeg", "-y", "-stream_loop", "-1", "-i", raw_vid_f, "-i", audio_f,
-                "-t", str(dur), "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=25",
-                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", clip_f
-            ], check=True)
-        else:
-            img_url = "https://image." + "pollinations.ai/prompt/" + urllib.parse.quote(f"{scene['video_prompt']}, photorealistic 8k vertical") + "?width=720&height=1280&nologo=true"
-            r = requests.get(img_url, timeout=45)
-            with open(img_f, "wb") as f:
-                f.write(r.content)
-            frames = int((dur + 0.2) * 25)
-            zoom_filter = f"scale=1440:2560,zoompan=z='min(zoom+0.0015,1.15)':d={frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=720x1280,fps=25"
-            subprocess.run([
-                "ffmpeg", "-y", "-loop", "1", "-i", img_f, "-i", audio_f,
-                "-vf", zoom_filter, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", clip_f
-            ], check=True)
+        valid_img = False
+        # 1. Try Pollinations AI Image
+        img_url = "https://image." + "pollinations.ai/prompt/" + urllib.parse.quote(f"{scene['video_prompt']}, photorealistic 8k vertical") + "?width=720&height=1280&nologo=true"
+        try:
+            r = requests.get(img_url, timeout=30)
+            if r.status_code == 200 and r.content[:2] == b'\xff\xd8' and len(r.content) > 10000:
+                with open(img_f, "wb") as f:
+                    f.write(r.content)
+                valid_img = True
+        except Exception:
+            pass
+
+        # 2. Fallback: Real HD Photo from Wikimedia Commons (100% Free, No Key)
+        if not valid_img:
+            short_query = " ".join(scene["video_prompt"].split()[:4])
+            valid_img = fetch_free_real_photo(short_query, img_f)
+
+        # 3. Last resort clean dark cinematic background (never fails)
+        if not valid_img:
+            subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=0x0f172a:s=720x1280:d=1", "-frames:v", "1", img_f], check=True)
+
+        frames = int((dur + 0.2) * 25)
+        zoom_filter = f"scale=1440:2560:force_original_aspect_ratio=increase,crop=1440:2560,zoompan=z='min(zoom+0.0015,1.15)':d={frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=720x1280,fps=25"
+        subprocess.run([
+            "ffmpeg", "-y", "-loop", "1", "-i", img_f, "-i", audio_f,
+            "-vf", zoom_filter, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", clip_f
+        ], check=True)
         clip_files.append(clip_f)
 
     with open("concat_list.txt", "w") as f:
