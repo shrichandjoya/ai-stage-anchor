@@ -5,18 +5,15 @@ import time
 import asyncio
 import urllib.parse
 import subprocess
-import concurrent.futures
 import feedparser
 import requests
 import edge_tts
 from google import genai
-from gradio_client import Client, handle_file
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-HF_TOKEN = os.environ.get("HF_TOKEN")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 YOUTUBE_TOKEN_JSON = os.environ.get("YOUTUBE_TOKEN_JSON")
@@ -47,7 +44,6 @@ def check_telegram_topic():
                 last_id = int(val)
 
     url = "https://api." + "telegram.org" + f"/bot{TELEGRAM_BOT_TOKEN}/getUpdates?offset={last_id + 1}"
-
     try:
         res = requests.get(url, timeout=15).json()
         for item in res.get("result", []):
@@ -221,17 +217,17 @@ def build_lipsync_video(script_text, final_output="final_short.mp4"):
 
     try:
         if not os.path.exists("Wav2Lip"):
-            subprocess.run(["git", "clone", "https://github.com"], check=True)
+            subprocess.run(["git", "clone", "https://" + "://github.com"], check=True)
             os.makedirs("Wav2Lip/checkpoints", exist_ok=True)
             os.makedirs("Wav2Lip/face_detection/detection/sfd", exist_ok=True)
             subprocess.run([
                 "wget", "-q",
-                "https://huggingface.co",
+                "https://" + "huggingface.co/camenduru/Wav2Lip/resolve/main/checkpoints/wav2lip_gan.pth",
                 "-O", "Wav2Lip/checkpoints/wav2lip_gan.pth"
             ], check=True)
             subprocess.run([
                 "wget", "-q",
-                "https://adrianbulat.com",
+                "https://www." + "://adrianbulat.com",
                 "-O", "Wav2Lip/face_detection/detection/sfd/s3fd.pth"
             ], check=True)
 
@@ -256,36 +252,6 @@ def build_lipsync_video(script_text, final_output="final_short.mp4"):
         "ffmpeg", "-y", "-i", looped_vid, "-i", "voice.mp3",
         "-c:v", "libx264", "-c:a", "aac", "-shortest", final_output
     ], check=True)
-    return final_output
-
-    def try_space(space):
-        client = Client(space, token=HF_TOKEN if HF_TOKEN else None)
-        if "MuseTalk" in space:
-            return client.predict(audio_path=handle_file("voice.mp3"), video_path=handle_file(looped_vid), bbox_shift=0, api_name="/inference")
-        return client.predict(handle_file(looped_vid), handle_file("voice.mp3"), api_name="/predict")
-
-    for space in ["TMElyralab/MuseTalk", "fffiloni/SadTalker"]:
-        try:
-            print(f"Trying {space} (Max 90s wait)...")
-            with concurrent.futures.ThreadPoolExecutor() as ex:
-                future = ex.submit(try_space, space)
-                result = future.result(timeout=90)
-
-            synced_file = result if isinstance(result, (list, tuple)) else result
-            if isinstance(synced_file, dict) and "video" in synced_file:
-                synced_file = synced_file["video"]
-
-            subprocess.run([
-                "ffmpeg", "-y", "-i", synced_file, "-i", "voice.mp3",
-                "-c:v", "libx264", "-c:a", "aac", "-map", "0:v:0", "-map", "1:a:0", "-shortest", final_output
-            ], check=True)
-            print("Lip-sync completed!")
-            return final_output
-        except Exception as e:
-            print(f"{space} skipped (busy/timeout): {e}")
-
-    print("Using fast clean base video + voiceover...")
-    subprocess.run(["ffmpeg", "-y", "-i", looped_vid, "-i", "voice.mp3", "-c:v", "libx264", "-c:a", "aac", "-shortest", final_output], check=True)
     return final_output
 
 def download_scene_image(prompt, img_path):
@@ -348,7 +314,7 @@ def upload_to_youtube(video_file, title, description, is_doc=False):
         }
         media = MediaFileUpload(video_file, chunksize=-1, resumable=True, mimetype="video/mp4")
         response = youtube.videos().insert(part="snippet,status", body=body, media_body=media).execute()
-        return f"https://youtube.com{response.get('id')}"
+        return "https://www." + f"://youtube.com{response.get('id')}"
     except Exception as e:
         print("YouTube upload skipped due to error:", e)
         return None
