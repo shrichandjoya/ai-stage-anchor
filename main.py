@@ -69,8 +69,8 @@ def check_telegram_topic():
 
 def fetch_trending_news():
     rss_urls = [
-    "https://" + "://google.com",
-    "https://" + "://google.com"
+        "https://news." + "://google.com",
+        "https://news." + "://google.com"
     ]
     headlines = []
     for url in rss_urls:
@@ -195,9 +195,9 @@ async def create_voiceover(script_text, output_audio):
     clean_text = script_text.replace("...", " — ").replace("।", "। ")
     communicate = edge_tts.Communicate(
         clean_text,
-        voice="hi-IN-SwaraNeural",
-        rate="-3%",
-        pitch="+3Hz"
+        voice="hi-IN-AnanyaNeural",
+        rate="-5%",
+        pitch="+2Hz"
     )
     await communicate.save(output_audio)
 
@@ -215,10 +215,43 @@ def build_lipsync_video(script_text, final_output="final_short.mp4"):
     looped_vid = "looped_base.mp4"
     subprocess.run([
         "ffmpeg", "-y", "-stream_loop", "-1", "-i", BASE_VIDEO_MOTIVATION,
-        "-t", str(duration + 0.5), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", looped_vid
+        "-t", str(duration + 0.3), "-vf", "scale=720:1280,fps=25",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", looped_vid
     ], check=True)
 
-    # Fast & clean merge with human female voiceover
+    try:
+        if not os.path.exists("Wav2Lip"):
+            subprocess.run(["git", "clone", "https://github.com"], check=True)
+            os.makedirs("Wav2Lip/checkpoints", exist_ok=True)
+            os.makedirs("Wav2Lip/face_detection/detection/sfd", exist_ok=True)
+            subprocess.run([
+                "wget", "-q",
+                "https://huggingface.co",
+                "-O", "Wav2Lip/checkpoints/wav2lip_gan.pth"
+            ], check=True)
+            subprocess.run([
+                "wget", "-q",
+                "https://adrianbulat.com",
+                "-O", "Wav2Lip/face_detection/detection/sfd/s3fd.pth"
+            ], check=True)
+
+        subprocess.run(["ffmpeg", "-y", "-i", "voice.mp3", "-ar", "16000", "-ac", "1", "voice.wav"], check=True)
+        subprocess.run([
+            "python", "Wav2Lip/inference.py",
+            "--checkpoint_path", "Wav2Lip/checkpoints/wav2lip_gan.pth",
+            "--face", looped_vid,
+            "--audio", "voice.wav",
+            "--pads", "0", "15", "0", "0",
+            "--nosmooth",
+            "--outfile", final_output
+        ], check=True)
+
+        if os.path.exists(final_output):
+            print("Real Lip-Sync Video Generated!")
+            return final_output
+    except Exception as e:
+        print("Local Wav2Lip error:", e)
+
     subprocess.run([
         "ffmpeg", "-y", "-i", looped_vid, "-i", "voice.mp3",
         "-c:v", "libx264", "-c:a", "aac", "-shortest", final_output
